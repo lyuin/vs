@@ -1,0 +1,169 @@
+<!doctype html>
+<!--
+  vs — 2つのテキストを貼り付けるだけで差分を表示する静的 Web アプリ。
+
+  ファイル構成（ビルド不要・外部ライブラリなし）:
+    index.html … 画面の骨組み、CSP、リファラ設定
+    style.css  … 見た目（ライト/ダークは OS 設定に追従）
+    diff.js    … 差分計算のみ（DOM に触れない純粋な処理）
+    app.js     … 画面の動作（入力→差分表示、ルーラー、クリア/元に戻す）
+
+  セキュリティ方針（最優先）:
+    - 入力したテキストは保存しない（localStorage / Cookie などを一切使わない）。
+    - 入力したテキストは送信しない（CSP の connect-src 'none'、フォームなし）。
+    - 外部リソースを読み込まない（フォント・CDN・画像なし。favicon も data: で要求を抑止）。
+    - ユーザーの文字列は textContent 等でのみ描画し、HTML として解釈させない
+      （Trusted Types 'none' で innerHTML 系を禁止）。
+    - CSP は GitHub Pages ではヘッダを設定できないため meta で指定する。
+      frame-ancestors は meta では無効なので指定しない（既知の制約）。
+
+  画面の構成（v1.2）:
+    - 上: 入力帯（薄いグレーの背景）。ツールバー（タイトルとクリア）と左右の入力欄。
+    - 区切り線をはさんで下: 差分欄（白い背景）。見出し「Diff」と件数、左端に全体の概要ルーラー。
+    - 左右の区別は文字ではなく色で示す: 左 = 赤、右 = 緑（どちらが古い/新しいとは決めない）。
+      件数は「追加/削除」の意味を持たせず、違う行の数だけを中立に出す（例: 2 lines differ。赤/緑の色も付けない）。
+      入力欄の上端の太い色の帯・差分の列見出しの帯・ルーラーの帯で同じ色の約束を使う
+      （記号の「−」「+」は開閉ボタンに見えるので見出しには使わない）。
+    - 同じ行も含めて全行を常に表示する（折りたたまない。クリックせずに全体を見渡せるように）。
+    - 表示言語は英語のみ（ボタン名などは短い英語。言語に依らず使える見た目にする）。
+
+  v1.3 で追加:
+    - 見出しの配置の約束: 左側 = 読むだけの情報（タイトル・件数）、右側 = 操作（ボタン）。
+    - 差分の見出しの右端に移動ボタン（⤒ 先頭 / ↑ 前の変更 / ↓ 次の変更 / ⤓ 末尾）。
+      「変更」= 色の付いた行が続くひとかたまり。移動先は差分欄の上から約1/5の位置に来る。
+    - ツールバーの右端に「?」（キーボードショートカットの一覧）。
+    - キー操作: 差分欄を選択中は ↓/↑ で次/前の変更、⌘↓/⌘↑ で末尾/先頭。F7 / Shift+F7 はどこでも次/前の変更。
+      Esc で入力欄から差分欄へ移る（ヘルプが開いていれば閉じる）。入力欄の中では矢印キーは普通のカーソル移動。
+    - 変わった部分の中だけ、空白を見える印にする（全角スペース = 四角、半角スペース = 中黒、タブ = 矢印）。
+
+  v1.3.1 で追加:
+    - 「なぜ機密のテキストを貼っても安全か」を短く示す。両方とも空のときの案内文の下に1行、
+      ヘルプの中に「Privacy」の節（根拠は下のヘルプのコメント参照。上のセキュリティ方針と同じ内容）。
+    - 先頭/末尾ボタンの aria-keyshortcuts に Ctrl 版も書く（キー操作は ⌘ / Ctrl のどちらでも効くため）。
+
+  v1.3.2 で変更:
+    - Tab は「左の欄 → 右の欄 → 差分欄 → 左の欄」を循環する（Shift+Tab は逆順）。ボタンには Tab で寄り道しない。
+    - Esc は場所で変わる: ヘルプが開いていれば閉じる / 入力欄なら差分欄へ / 差分欄ならクリア（Undo 付き）。
+    - 「?」キーでヘルプを開閉する。ヘルプの一番下に小さな Clear ボタン。
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!--
+    既知の制約（フレーム埋め込み）:
+    GitHub Pages では HTTP レスポンスヘッダを設定できず、frame-ancestors は meta の CSP では効かない。
+    そのため、他のサイトがこのページを iframe に埋め込むこと（クリックジャッキング）を完全には防げない。
+    ただしこのページは状態を持たず（保存しない）、何も送信しないため、悪用されても得られるものはなくリスクは低い。
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; media-src 'none'; require-trusted-types-for 'script'; trusted-types 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Paste two texts and see the diff. Nothing is stored or sent.">
+  <title>vs — text diff</title>
+  <!-- favicon の自動リクエストを防ぐための空アイコン -->
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <!-- 入力帯（グレーの背景）。下端の区切り線で差分欄と分ける -->
+  <div class="band">
+    <!-- ツールバー（スマホでも1行）: 左 = タイトル / 右 = 元に戻す（クリア後5秒間だけ）・クリア・ヘルプ。
+         ヘルプの「?」は常に右上の角に置く（Undo が出ても位置が動かないよう一番右） -->
+    <header class="toolbar">
+      <h1 class="title">vs</h1>
+      <div class="spacer"></div>
+      <!-- クリア直後だけ5秒間出る。文字列は app.js のメモリ上にだけ一時保持する -->
+      <button type="button" class="btn btn-undo" id="undo" hidden>Undo</button>
+      <button type="button" class="btn" id="clear">Clear</button>
+      <!-- ヘルプ: キーボードショートカットの一覧と、その下に安全性の説明（Privacy）。「?」ボタンの真下に小さく開く（モーダルではない）。
+           開くとパネルにフォーカスが移り、閉じると「?」ボタンに戻る（app.js 参照）。
+           ⌘ の表記は Mac 以外では app.js が data-pc の文言（Ctrl+…）に差し替える -->
+      <div class="help-wrap" id="help-wrap">
+        <button type="button" class="btn btn-icon" id="help-btn" aria-label="Help" aria-haspopup="dialog" aria-expanded="false" aria-controls="help" aria-keyshortcuts="?">?</button>
+        <div class="help" id="help" role="dialog" aria-label="Help" tabindex="-1" hidden>
+          <dl class="help-list">
+            <dt><kbd>↓</kbd> / <kbd>↑</kbd></dt><dd>Next / previous change (in diff)</dd>
+            <dt><kbd data-pc="Ctrl+↓">⌘↓</kbd> / <kbd data-pc="Ctrl+↑">⌘↑</kbd></dt><dd>Bottom / top (in diff)</dd>
+            <dt><kbd>F7</kbd> / <kbd>⇧F7</kbd></dt><dd>Next / previous change (anywhere)</dd>
+            <dt><kbd>Tab</kbd></dt><dd>Cycle left → right → diff</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Leave a box · Clear (in diff) · Close help</dd>
+            <dt><kbd>?</kbd></dt><dd>Show / hide this help</dd>
+          </dl>
+          <!-- 安全性の説明（v1.3.1）。各文の根拠:
+                 1文目「送らない」 … CSP の connect-src 'none'（fetch などの通信を止める）と form-action 'none'（フォーム送信を止める）。
+                                     ページ自身（この meta の CSP）がブラウザに禁止させるので「the page itself」と書く。
+                 2文目「保存しない」 … localStorage / sessionStorage / IndexedDB / Cookie などの保存 API を一切使わない。
+                 3文目「外部のコードなし」 … default-src 'none' + script-src 'self'（同じ場所の app.js / diff.js だけ）。
+                                     トラッカー・ライブラリ・Web フォントは読み込まない。
+                 最後の注記 … ブラウザ拡張機能はページの外側で動くため、このページからは制御できない（正直に書いておく）。 -->
+          <section class="help-privacy" aria-labelledby="help-privacy-title">
+            <h2 class="help-heading" id="help-privacy-title">Privacy</h2>
+            <ul class="help-notes">
+              <li>Nothing leaves this page — sending data is blocked by the page itself.</li>
+              <li>Nothing is saved — no cookies or storage. Close the tab and it's gone.</li>
+              <li>No outside code — no trackers, libraries, or fonts.</li>
+            </ul>
+            <p class="help-faint">Browser extensions can still read any page you open.</p>
+          </section>
+          <!-- v1.3.2: ツールバーの Clear と同じ動作（Undo も出る）。押すとヘルプを閉じる -->
+          <div class="help-actions">
+            <button type="button" class="btn btn-small" id="help-clear">Clear</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 入力欄。見出しの行はなく、欄の上端の太い色の帯（左 = 赤、右 = 緑）で左右を示す。
+         帯は style.css の .pane::before で描く飾り（操作できず、フォーカスも受けない）。
+         読み上げ名は textarea の aria-label に持たせる（Left text (red) / Right text (green)）。
+         選択中の欄はその側の色の太い枠になる。右端で折り返す（横スクロールなし）。
+         両方に入力があると、選択していない欄は約3行に縮む -->
+    <section class="inputs">
+      <div class="pane pane-del" id="pane-a">
+        <textarea id="text-a" class="pane-text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" wrap="soft" aria-label="Left text (red)" placeholder="Paste here"></textarea>
+      </div>
+      <div class="pane pane-add" id="pane-b">
+        <textarea id="text-b" class="pane-text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" wrap="soft" aria-label="Right text (green)" placeholder="Paste here"></textarea>
+      </div>
+    </section>
+  </div>
+
+  <!-- 差分欄（白い背景）。見出し＋件数、左端に概要ルーラー、右に差分本体（この中だけがスクロールする） -->
+  <main class="result" id="result" aria-label="Diff">
+    <div class="result-head">
+      <h2 class="result-title">Diff</h2>
+      <!-- 違う行の数を1つだけ出す（例: 2 lines differ）。数えるのは左右表示で色の付く行の数で、
+           左右が組になった行は1行と数える（1列表示でも同じ数）。完全に同じときは「No differences」、
+           空・片方だけ空・大きすぎるときは何も出さない。文言は app.js が textContent で入れる -->
+      <p class="counts" id="counts"></p>
+      <!-- 右端: 差分の中を移動するボタン（操作は右側に置く約束）。名前は aria-label だけに持たせ、
+           ブラウザ標準のツールチップ（title）は出さない。行けない方向のボタンは無効になる -->
+      <div class="nav" role="group" aria-label="Navigate changes">
+        <button type="button" class="btn btn-icon" id="nav-top" aria-label="Top" aria-keyshortcuts="Meta+ArrowUp Control+ArrowUp" disabled>⤒</button>
+        <button type="button" class="btn btn-icon" id="nav-prev" aria-label="Previous change" aria-keyshortcuts="ArrowUp Shift+F7" disabled>↑</button>
+        <button type="button" class="btn btn-icon" id="nav-next" aria-label="Next change" aria-keyshortcuts="ArrowDown F7" disabled>↓</button>
+        <button type="button" class="btn btn-icon" id="nav-bottom" aria-label="Bottom" aria-keyshortcuts="Meta+ArrowDown Control+ArrowDown" disabled>⤓</button>
+      </div>
+    </div>
+    <div class="result-body">
+      <!-- 概要ルーラー: 縦の全長が差分全体。左の帯 = 左にだけある行（赤）、右の帯 = 右にだけある行（緑）、
+           グレーの半透明の枠 = いま見えている範囲。クリック/ドラッグでその位置へスクロールする。
+           キーボードでは差分本体（下の scroller）を直接スクロールできるので、ルーラー自体はフォーカスを受けない -->
+      <div class="ruler" id="ruler" role="scrollbar" aria-controls="scroller" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Overview of differences: red = left, green = right">
+        <div class="ruler-marks" id="ruler-marks" aria-hidden="true"></div>
+        <div class="ruler-view" id="ruler-view" aria-hidden="true" hidden></div>
+      </div>
+      <div class="scroller" id="scroller" tabindex="0" aria-label="Diff lines">
+        <!-- 状態メッセージ（空・警告など） -->
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <div class="diff" id="diff"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 読み上げ用の通知（常に存在させ、文言だけ差し替える方が確実に読み上げられる） -->
+  <p class="visually-hidden" id="announce" role="status" aria-live="polite"></p>
+</body>
+</html>

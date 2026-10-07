@@ -1,0 +1,559 @@
+/*
+  style.css — vs の見た目。
+  方針: グレー基調、細い線、余白多め、影・グラデーションなし。色は差分の緑・赤（彩度を落としたもの）だけ。
+  ライト/ダークは OS 設定（prefers-color-scheme）に追従。手動切替はなし。
+  フォントは外部読み込みなし（システムフォントのみ）。
+
+  画面の構成（広い画面）:
+    ┌ .band（入力帯・薄いグレー）: ツールバー + 左右の入力欄 ┐
+    ├──────────── 区切り線 ────────────┤
+    └ .result（差分欄・白）: 見出し / [ルーラー | 差分本体（ここだけスクロール）] ┘
+  ページ全体は画面の高さ（100dvh）に収め、ページ自体はスクロールさせない。
+
+  色の約束: 左 = 赤、右 = 緑（古い/新しいとは決めない）。入力欄の上端の帯と枠、差分の列見出しの帯、ルーラーの帯で共通。
+  「−」「+」の記号は開閉ボタンに見えるため、見出しには使わず色の帯だけで示す。
+  赤は「エラー」に見えないよう、差分と同じ落ち着いた赤を使う。
+*/
+
+/* ---- 色と寸法の変数（ライト） ---- */
+:root {
+  color-scheme: light dark;
+  --band: #f0f0f2;        /* 入力帯の背景 */
+  --surface: #ffffff;     /* 差分欄・入力欄の背景 */
+  --bg: #f6f6f8;          /* 差分の空きセル・ルーラーの地 */
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --faint: #a1a1a6;
+  --line: #e3e3e6;
+  --line-strong: #cfcfd4;
+  --divider: #b9b9c0;     /* 入力帯と差分欄の区切り線 */
+  --view-bg: rgba(60, 60, 67, 0.16);   /* ルーラーの「見えている範囲」 */
+  --view-line: rgba(60, 60, 67, 0.42);
+
+  /* 差分の色（やや彩度を落とした緑・赤） */
+  --add-bg: #e8f3ec;
+  --add-strong: #b9dfc6;
+  --add-text: #2f7a4a;
+  --del-bg: #f8eaea;
+  --del-strong: #eec0c0;
+  --del-text: #a8423d;
+  --warn-bg: #fbf3e2;
+  --warn-text: #7a5410;
+  /* 差分欄を選択中の枠・移動先の行の印（赤/緑と区別できる中立のグレー） */
+  --focus: #8e8e96;
+
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "BIZ UDGothic", monospace;
+  --radius: 8px;
+  --gap: 16px;
+}
+
+/* ---- ダーク ---- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --band: #26262a;
+    --surface: #1a1a1d;
+    --bg: #222225;
+    --text: #e8e8ea;
+    --muted: #a0a0a6;
+    --faint: #6c6c72;
+    --line: #2e2e33;
+    --line-strong: #3d3d43;
+    --divider: #55555d;
+    --view-bg: rgba(235, 235, 245, 0.16);
+    --view-line: rgba(235, 235, 245, 0.42);
+
+    --add-bg: #1c2d22;
+    --add-strong: #2f5a3d;
+    --add-text: #8fd3a5;
+    --del-bg: #33201f;
+    --del-strong: #6a3532;
+    --del-text: #f0a19c;
+    --warn-bg: #33291a;
+    --warn-text: #f0c879;
+    --focus: #8a8a93;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--surface);
+  color: var(--text);
+  font: 14px/1.5 var(--font-ui);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* キーボード操作時のフォーカスは常に見えるようにする（色は中立のグレー） */
+:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+
+/* 左右それぞれの色。.pane-del / .pane-add の中で var(--side) を使う */
+.pane-del { --side: var(--del-text); }
+.pane-add { --side: var(--add-text); }
+
+/* ---- 入力帯（ツールバー＋入力欄）: グレーの背景、下端に区切り線 ---- */
+.band {
+  flex: none;
+  background: var(--band);
+  border-bottom: 1.5px solid var(--divider);
+  padding: 0 var(--gap) 14px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+}
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.spacer { flex: 1; }
+
+/* ボタン */
+.btn {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  height: 30px;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn[hidden] { display: none; }
+/* 記号1文字のボタン（?・移動ボタン）は正方形 */
+.btn-icon { width: 30px; padding: 0; font-size: 15px; line-height: 1; }
+/* 行けない方向のボタン: 薄くして押せないことを示す */
+.btn:disabled { color: var(--faint); border-color: var(--line); cursor: default; }
+
+/*
+  ヘルプ（キーボードショートカットの一覧）: 「?」ボタンの真下、右端をそろえて開く小さなパネル。
+  影・グラデーションは使わず細い枠だけ。狭い画面でもはみ出さないよう最大幅を画面幅に合わせる。
+*/
+.help-wrap { position: relative; }
+.help {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--gap));
+  padding: 10px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.help[hidden] { display: none; }
+/* 開くとパネル自体にフォーカスが移る。パネルの輪郭線は出さない（開いていること自体が目印）。
+   中の Clear ボタンは通常のボタンと同じフォーカス表示 */
+.help:focus, .help:focus-visible { outline: none; }
+.help-list {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px 14px;
+  margin: 0;
+  align-items: baseline;
+}
+.help-list dt { white-space: nowrap; color: var(--muted); }
+.help-list dd { margin: 0; }
+/* 安全性の説明（v1.3.1）: 細い線で区切った下の節。パネルの幅はショートカットの一覧で決め、
+   この節はその幅の中で折り返す（width: 0 + min-width: 100% で、節自身はパネルを広げない） */
+.help-privacy {
+  width: 0;
+  min-width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.help-heading { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.help-notes { margin: 0; padding-left: 1.1em; }
+.help-notes li + li { margin-top: 4px; }
+.help-faint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+/* ヘルプの一番下の Clear（v1.3.2）: 右寄せの小さな控えめなボタン（ツールバーの Clear と同じ動作） */
+.help-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.help-actions .btn-small { height: 24px; padding: 0 10px; font-size: 12px; color: var(--muted); }
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 5px;
+  font: 12px/1.6 var(--font-mono);
+  text-align: center;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+/* クリア直後だけ出る Undo は少し目立たせる（枠を濃く） */
+.btn-undo { border-color: var(--muted); font-weight: 600; }
+
+/* ---- 入力欄 ---- */
+.inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+.pane { display: flex; flex-direction: column; min-width: 0; }
+
+/*
+  入力欄の上端の色の帯（左 = 赤、右 = 緑）。欄の枠の一部に見えるよう、上の角の丸みに合わせ、
+  欄の上の枠線の代わりに置く（textarea は ::before を持てないので、親の .pane に付ける）。
+  ボタンに見えないよう、カーソルは変えず、クリックも素通りさせる（擬似要素なのでフォーカスも受けない）。
+*/
+.pane::before {
+  content: "";
+  flex: none;
+  height: 5px;
+  background: var(--side);
+  border-radius: var(--radius) var(--radius) 0 0;
+  pointer-events: none;
+}
+
+.pane-text {
+  width: 100%;
+  height: 32vh;
+  min-height: 140px;
+  resize: vertical;
+  padding: 10px 12px;
+  font: 13px/1.55 var(--font-mono);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-top: 0;          /* 上端は色の帯（.pane::before）が枠の代わり */
+  border-radius: 0 0 var(--radius) var(--radius);
+  outline: none;
+  tab-size: 4;
+  /* 入力欄は右端で折り返し、横スクロールは絶対に出さない（長い1行もそのまま見える） */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  /* 折りたたみ/展開は素早く。入力中は高さが変わらないのでガタつかない */
+  transition: height 140ms ease;
+}
+.pane-text::placeholder { color: var(--faint); }
+
+/*
+  最重要: 「いまどちらの欄を選択しているか」をひと目でわかるようにする。
+  選択中 … その側の色（左 = 赤、右 = 緑）の太い枠（左右と下が2px。余白を1px減らして中身は動かさない）。
+           上端の帯と同じ色でつながる。色だけに頼らず、枠の太さでも区別できる。
+  非選択 … 枠・本文を控えめにし、上端の帯も少し薄くする（赤/緑とわかる濃さは残す）。
+*/
+.pane:focus-within .pane-text {
+  border: 2px solid var(--side);
+  border-top: 0;
+  padding: 10px 11px 9px;
+}
+.inputs:focus-within .pane:not(:focus-within)::before { opacity: 0.6; }
+.inputs:focus-within .pane:not(:focus-within) .pane-text { border-color: var(--line); color: var(--muted); }
+
+/* ---- 差分欄 ---- */
+.result {
+  flex: 1 1 0;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+/* 見出し: 左 = 読むだけの情報（Diff と件数）、右 = 操作（移動ボタン） */
+.result-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px var(--gap);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.nav { display: flex; gap: 4px; margin-left: auto; }
+.nav .btn-icon { height: 26px; width: 28px; }
+.result-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+/* 違う行の数（例: 2 lines differ）。見出しと同じ字体・控えめな色で、赤/緑は使わない */
+.counts {
+  margin: 0;
+  font: 13px/1 var(--font-ui);
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-body { flex: 1; min-height: 0; display: flex; position: relative; }
+
+/*
+  差分欄を選択中（キーボードの ↓/↑ で変更を移動できる状態）は、差分欄の全体を中立のグレーの枠で囲む。
+  入力欄の赤/緑の枠と見分けられる色。クリックで選んだときも出す（入力欄と同じく「いまどこを選んでいるか」を示す）。
+  スクロールしても残る列見出しの帯に隠れないよう、枠は上に重ねる飾り（クリックは素通り）として描く。
+*/
+.result-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 2px solid var(--focus);
+  pointer-events: none;
+  opacity: 0;
+}
+.result-body:has(.scroller:focus)::after { opacity: 1; }
+
+/* 概要ルーラー: 左の帯 = 左にだけある行（赤）、右の帯 = 右にだけある行（緑）、半透明グレー = 見えている範囲 */
+.ruler {
+  flex: none;
+  position: relative;
+  width: 18px;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+  /* 印の位置は整数に丸めた高さ（clientHeight）で計算するため、ルーラーが小数の位置にあると
+     最後の印が1px未満はみ出してページ全体がスクロールしてしまう。はみ出しは切り取る */
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ruler-marks { position: absolute; inset: 0; pointer-events: none; }
+.ruler-marks > div { position: absolute; width: 6px; border-radius: 1px; }
+.ruler-marks .m-del { left: 2px; background: var(--del-text); }
+.ruler-marks .m-add { right: 2px; background: var(--add-text); }
+/* 移動したときに、移動先の変更の印を短時間（約0.6秒）太くして、どこに来たかを示す */
+.ruler-marks > div { transition: transform 120ms ease-out; }
+.ruler-marks .m-del { transform-origin: left center; }
+.ruler-marks .m-add { transform-origin: right center; }
+.ruler-marks > .is-flash { transform: scaleX(2.3); }
+.ruler-view {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--view-bg);
+  border-top: 1px solid var(--view-line);
+  border-bottom: 1px solid var(--view-line);
+  pointer-events: none;
+}
+.ruler-view[hidden] { display: none; }
+
+/* 差分本体のスクロール領域（広い画面ではここだけがスクロールする） */
+.scroller {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+/* 選択中の表示は .result-body::after の枠で行うので、ここでは標準の輪郭線を出さない */
+.scroller:focus, .scroller:focus-visible { outline: none; }
+
+.status { margin: 0; color: var(--muted); font-size: 13px; }
+.status:empty { display: none; }
+.status.is-empty { padding: 28px 16px; text-align: center; }
+/* 空の状態の2行目（安全性の一言）。1行目より小さく、さらに薄く */
+.status-sub { display: block; margin-top: 6px; font-size: 12px; opacity: 0.75; }
+.status.is-warn {
+  margin: 12px var(--gap);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.status.is-note { padding: 6px var(--gap); border-bottom: 1px solid var(--line); }
+
+.diff:empty { display: none; }
+.diff {
+  font: 13px/1.55 var(--font-mono);
+  tab-size: 4;            /* 入力欄と同じタブ幅 */
+  /* 行番号の幅は app.js が桁数に合わせて設定する */
+  --nw: 4ch;
+}
+
+/*
+  左右表示の列見出し: 入力欄と同じ色の帯だけ（左の列 = 赤、右の列 = 緑）。スクロールしても上に残る。
+  1列表示（狭い画面）には出さない（app.js 参照）。
+*/
+.cols {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface);
+}
+.col { height: 5px; background: var(--side); }
+/* 2本の帯の境目（差分の中央の区切り線と同じ位置）に細いすき間を入れる */
+.col + .col { border-left: 1px solid var(--surface); }
+
+/*
+  行の塊（100行ずつ）。行数が多いとき（.is-large）は、画面外の塊の描画を省いて速くする。
+  省いても行は DOM に残るので、ブラウザのページ内検索（Cmd+F）で見つかる。
+  仮の高さは行数×行の高さ（一度描画した塊は実際の高さを覚える = auto）。
+*/
+.diff.is-large .chunk {
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(var(--rows, 100) * 1.55em);
+}
+
+/* 1行 = グリッド1行。左右表示: [番号][記号][本文] × 2 / 1列表示: [旧番号][新番号][記号][本文] */
+.row { display: grid; }
+.diff.split .row { grid-template-columns: var(--nw) 1.5ch minmax(0, 1fr) var(--nw) 1.5ch minmax(0, 1fr); }
+.diff.single .row { grid-template-columns: var(--nw) var(--nw) 1.5ch minmax(0, 1fr); }
+
+.no, .sign {
+  color: var(--faint);
+  text-align: right;
+  padding: 0 6px 0 0;
+  user-select: none;
+  -webkit-user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.no { padding-left: 6px; font-size: 12px; }
+.sign { text-align: center; padding: 0; }
+.code {
+  margin: 0;
+  padding: 0 10px 0 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  min-height: 1.55em;
+}
+/* 左右表示の中央の区切り線 */
+.diff.split .row > :nth-child(4) { border-left: 1px solid var(--line); }
+
+.del { background: var(--del-bg); }
+.add { background: var(--add-bg); }
+.del.sign, .del.no { color: var(--del-text); }
+.add.sign, .add.no { color: var(--add-text); }
+.void { background: var(--bg); }
+/*
+  色の約束: 薄い色（行の背景）=「この行に変更がある」、濃い色 =「変わった中身そのもの」。
+  薄い色の行には必ず濃い部分か、挿入位置マーカーが1つ以上ある。
+  丸ごと削除/追加された行は本文全体が濃い色になる。
+*/
+.del mark, .add mark { color: inherit; border-radius: 2px; }
+.del mark { background: var(--del-strong); }
+.add mark { background: var(--add-strong); }
+/* 挿入位置マーカー: 反対側で文字が足された/消された位置を示す細い縦線（濃い色） */
+.ins-point {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  vertical-align: text-bottom;
+  margin: 0 1px;
+  border-radius: 1px;
+}
+.del .ins-point { background: var(--del-text); }
+.add .ins-point { background: var(--add-text); }
+
+/*
+  見える空白（変わった部分の中と、変更行の行末の空白だけ。同じ部分の空白はそのまま）。
+  本物の空白文字は span の中に残し（幅とコピー結果を保つ）、印は ::before の飾りとして上に重ねる。
+  飾りはコピーされず、読み上げでも省く（content の「/ ""」。未対応のブラウザは1行目の指定を使う）。
+    .ws-sp   … 半角スペースなど → 中黒「·」
+    .ws-tab  … タブ → 矢印「→」（タブの幅は .diff の tab-size: 4）
+    .ws-ideo … 全角スペース（U+3000）→ 細い線の四角
+  行末の空白で、変わった部分ではないもの（.ws-tail）は印を薄くする。
+*/
+.ws { position: relative; }
+.ws::before {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.ws-sp::before { content: "·"; content: "·" / ""; }
+.ws-tab::before { content: "→"; content: "→" / ""; justify-content: flex-start; }
+.ws-ideo::before {
+  content: "";
+  inset: 0.22em 0.18em;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+}
+.ws-tail::before { opacity: 0.35; }
+
+/* 移動ボタン/キーで移動した先の変更: 行の左端に細い中立のグレーの線を出す */
+.row.is-here > :first-child { position: relative; }
+.row.is-here > :first-child::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--focus);
+}
+
+/* 画面には出さず、読み上げだけ行う要素 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+  ---- 狭い画面（スマホ、640px 未満。app.js の narrowMq と同じ値）----
+  入力欄は縦に並べ、差分は自動で1列表示。
+  ページ全体を普通にスクロールさせ、差分欄の内側のスクロール領域とルーラーは使わない。
+  理由: スマホでは画面キーボードで高さが大きく変わり、内側のスクロール領域が極端に狭くなる。
+  また幅18pxのルーラーは指では狙いにくく、390px の幅も削ってしまう。全体の把握はページのスクロールで足りる。
+*/
+@media (max-width: 639.98px) {
+  :root { --gap: 12px; }
+  body { display: block; height: auto; }
+  .band { padding-bottom: 12px; }
+  .toolbar { height: 44px; gap: 6px; }
+  .title { font-size: 16px; }
+  .btn { padding: 0 10px; height: 28px; font-size: 12px; }
+  .inputs { grid-template-columns: 1fr; gap: 10px; }
+  .pane-text { height: 22vh; min-height: 110px; }
+  .result, .result-body { display: block; min-height: 0; }
+  /* ページ全体がスクロールするので、移動ボタンが画面から消えないよう差分の見出しを上に残す */
+  .result-head { position: sticky; top: 0; z-index: 3; gap: 8px; padding: 6px var(--gap); }
+  .nav { gap: 3px; }
+  .ruler { display: none; }
+  .scroller { overflow: visible; }
+  .diff { font-size: 12px; }
+}
+
+/*
+  入力欄の折りたたみ（app.js の syncCompact が .is-compact を付け外しする）。
+  両方に入力があるとき、フォーカスのない欄だけを約3行に縮めて差分に場所を譲る。
+  クリック/Tab で選んだ欄は通常の高さに戻る。3行 = 行の高さ×3 + 上下の余白と下の枠（21px。上端は帯なので枠なし）。
+  スマホ用の高さ指定より後ろに置き、上書きされないようにする。
+  （v1.3: 貼り付けで両方そろったときはフォーカスが差分欄へ移るので、両方ともこの指定で縮む）
+*/
+.inputs.is-compact .pane:not(:focus-within) .pane-text {
+  height: calc(1.55em * 3 + 21px);
+  min-height: 0;
+  resize: none;
+}
+
+/* 動きを減らす設定の人には高さのアニメーションをしない */
+@media (prefers-reduced-motion: reduce) {
+  .pane-text { transition: none; }
+  .ruler-marks > div { transition: none; }
+}
