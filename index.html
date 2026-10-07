@@ -61,8 +61,10 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Paste two texts and see the diff. Nothing is stored or sent.">
   <title>vs — text diff</title>
-  <!-- favicon の自動リクエストを防ぐための空アイコン -->
-  <link rel="icon" href="data:,">
+  <!-- タブのアイコン。左 = 赤、右 = 緑 の2本（画面の色の帯と同じ決まり）。
+       SVG をこの場で埋め込む（data URI）ので、アイコンを取りに行く通信は発生しない（CSP の img-src data: で許可済み）。
+       ダークモードでは少し明るい赤・緑に切り替える。# は URL では %23 と書く必要がある -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.l%7Bfill:%23c96b6b%7D.r%7Bfill:%234f9a6c%7D@media (prefers-color-scheme:dark)%7B.l%7Bfill:%23d98686%7D.r%7Bfill:%236fb98a%7D%7D%3C/style%3E%3Crect class='l' x='2' y='4' width='13' height='24' rx='3'/%3E%3Crect class='r' x='17' y='4' width='13' height='24' rx='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
