@@ -184,6 +184,8 @@ body {
 .help-notes { margin: 0; padding-left: 1.1em; }
 .help-notes li + li { margin-top: 4px; }
 .help-faint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+/* 注記の中のリンク（View source）: 周りの注記と同じ色、下線だけでリンクとわかるようにする */
+.help-faint a { color: inherit; text-decoration: underline; }
 /* ヘルプの一番下の Clear（v1.3.2）: 右寄せの小さな控えめなボタン（ツールバーの Clear と同じ動作） */
 .help-actions {
   display: flex;

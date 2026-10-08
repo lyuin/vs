@@ -31,6 +31,9 @@
 //
 // セキュリティ上の約束（変更するときも必ず守ること）:
 //  - 入力テキストを保存しない: localStorage / sessionStorage / IndexedDB / Cookie / Cache API を使わない。
+//  - 入力テキストを持ち越さない（v1.3.3）: 開いたとき・離れるとき（pagehide）・「戻る」で bfcache から
+//    戻ったとき（pageshow の persisted）に両方の欄を空にする（末尾の wipe）。ブラウザのタブ復元が
+//    前回の入力を戻しても使わない。ブラウザ自身がクラッシュ復元用に持つ写しは、このページからは制御できない。
 //  - 入力テキストを送信しない: fetch / XHR / WebSocket / sendBeacon などを使わない（CSP でも禁止）。
 //  - クリップボード読み取り API は使わない（貼り付けはブラウザ標準の動作に任せる）。
 //  - ユーザーの文字列は textContent / createTextNode / replaceChildren でのみ描画する。
@@ -38,7 +41,7 @@
 //    （CSP の Trusted Types 'none' により、使うとブラウザがエラーにする）。
 //  - setTimeout には必ず関数を渡す（文字列は渡さない）。
 
-import { computeDiff, MAX_CHARS } from './diff.js';
+import { computeDiff, MAX_CHARS, MAX_LINES } from './diff.js';
 
 const DEBOUNCE_MS = 120;
 const CHUNK = 100;       // 行をこの数ずつ1つの塊（div.chunk）にまとめる
@@ -58,7 +61,7 @@ const TEXT = {
   privacy: 'Runs entirely in your browser. Nothing is sent or saved.',
   oneEmpty: 'Now paste into the other box.',
   same: 'No differences',
-  tooLarge: `Too large to compare (limit: ${MAX_CHARS.toLocaleString('en')} characters).`,
+  tooLarge: `Too large to compare (limit: ${MAX_CHARS.toLocaleString('en')} characters or ${MAX_LINES.toLocaleString('en')} lines).`,
   coarse: 'Large diff: part of it is shown in a simplified form.',
   // 件数は「追加/削除」ではなく、違う行の数だけを中立に言う
   differ: (n) => (n === 1 ? '1 line differs' : `${n} lines differ`),
@@ -809,9 +812,18 @@ undoBtn.addEventListener('click', () => {
 });
 
 // ---- 初期化 ----
-// ブラウザが前回の入力を復元した場合にも対応するため、最初に一度計算する
+// 入力は残さない方針。ブラウザがタブ復元などで前回の入力を戻しても、開いた時点で捨てる
+// （「元に戻す」の一時データも捨てる。dismissUndo がタイマー停止・データ破棄・ボタンを隠すまで行う）
+function wipe() { dismissUndo(); textA.value = ''; textB.value = ''; }
+wipe();
 result = computeDiff(textA.value, textB.value);
 syncCompact();
 render();
 // 開いてすぐ Cmd+V できるよう左の欄にフォーカス（HTML の autofocus は使わずここで一本化）
 textA.focus();
+
+// ページを離れるとき（別ページへ移動・タブを閉じる）にも消す。
+// 「戻る」で戻ったとき（bfcache で丸ごと保持されていた場合）も空の状態で表示し直す
+// （update は計算と描画をすぐに行う。デバウンスするのは入力時の schedule だけ）
+addEventListener('pagehide', wipe);
+addEventListener('pageshow', (e) => { if (e.persisted) { wipe(); update(); syncCompact(); textA.focus(); } });

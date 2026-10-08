@@ -11,13 +11,15 @@
 // - 組になった行は「単語（トークン）単位」の Myers 差分をとる。1文字単位だと
 //   偶然一致した文字で強調が細切れになるため。漢字・かなは1文字ずつ、英数字は語ごと。
 // - 片側にだけ文字が増えた/消えた場合、もう片側にはその位置に細い縦線（挿入位置マーカー）を出す。
-// - フリーズ防止: 入力サイズ上限（MAX_CHARS）、編集距離上限（MAX_D）、
+// - フリーズ防止: 入力サイズ上限（MAX_CHARS 文字・MAX_LINES 行）、編集距離上限（MAX_D）、
 //   計算量上限（MAX_WORK）を設け、超えたら粗い結果（ブロック全体を削除→追加）に切り替える。
 //   行の組み合わせ・行内差分にも上限があり、超えたら簡易な方法に切り替える。
 // - 入力文字列はどこにも保存・送信しない（このファイルは計算して返すだけ）。
 
 /** これを超える文字数の入力は計算しない（DoS 対策を兼ねる） */
 export const MAX_CHARS = 500000;
+/** これを超える行数の入力も計算しない（改行だけを大量に貼ると、文字数は上限内でも描画で固まるため） */
+export const MAX_LINES = 20000;
 
 const MAX_D = 2000;          // 行差分で許す最大編集距離
 const MAX_WORK = 50000000;   // 行差分の計算ステップ上限
@@ -35,7 +37,7 @@ const TOKEN_RE = /(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])[
 /**
  * 2つのテキストの差分を計算する。
  * 戻り値:
- *  { status: 'too-large' }                       … どちらかが MAX_CHARS 超
+ *  { status: 'too-large' }                       … どちらかが MAX_CHARS 超、または MAX_LINES 行超
  *  { status: 'empty' | 'one-empty' }             … 入力が空
  *  { status: 'same', lines:[text] }              … 完全一致（lines は表示用の全行）
  *  { status: 'diff', blocks, added, removed, coarse, maxLine }
@@ -55,6 +57,7 @@ export function computeDiff(textA, textB) {
 
   const a = splitLines(textA);
   const b = splitLines(textB);
+  if (a.length > MAX_LINES || b.length > MAX_LINES) return { status: 'too-large' };
   // 完全一致でも本文は表示したいので、行の配列を一緒に返す
   if (a.length === b.length && a.every((l, i) => l === b[i])) return { status: 'same', lines: a };
 

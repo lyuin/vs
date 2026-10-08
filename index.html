@@ -45,6 +45,12 @@
     - Tab は「左の欄 → 右の欄 → 差分欄 → 左の欄」を循環する（Shift+Tab は逆順）。ボタンには Tab で寄り道しない。
     - Esc は場所で変わる: ヘルプが開いていれば閉じる / 入力欄なら差分欄へ / 差分欄ならクリア（Undo 付き）。
     - 「?」キーでヘルプを開閉する。ヘルプの一番下に小さな Clear ボタン。
+
+  v1.3.3 で変更:
+    - 入力を持ち越さない: 開いたとき・離れるとき・「戻る」で戻ったとき（bfcache）に両方の欄を空にする（app.js の wipe）。
+    - 行数の上限（MAX_LINES = 20,000 行）を追加。改行だけを大量に貼っても描画で固まらないようにする（diff.js）。
+    - ヘルプの Privacy の文言を実際の動作に合わせる（毎回空で始まる・ブラウザ自身のクラッシュ復元用の写しは制御できない）。
+      GitHub のソースへのリンク（View source、新しいタブ）を追加。CSP は変更なし。
 -->
 <html lang="en">
 <head>
@@ -96,18 +102,26 @@
           <!-- 安全性の説明（v1.3.1）。各文の根拠:
                  1文目「送らない」 … CSP の connect-src 'none'（fetch などの通信を止める）と form-action 'none'（フォーム送信を止める）。
                                      ページ自身（この meta の CSP）がブラウザに禁止させるので「the page itself」と書く。
-                 2文目「保存しない」 … localStorage / sessionStorage / IndexedDB / Cookie などの保存 API を一切使わない。
+                 2文目「保存しない・毎回空で始まる」 … localStorage / sessionStorage / IndexedDB / Cookie などの保存 API を一切使わない。
+                                     さらに v1.3.3 から、開いたとき・離れるとき（pagehide）・「戻る」で bfcache から戻ったとき
+                                     （pageshow の persisted）に両方の欄を空にする（app.js の wipe）。タブ復元で前回の入力が戻っても使わない。
                  3文目「外部のコードなし」 … default-src 'none' + script-src 'self'（同じ場所の app.js / diff.js だけ）。
                                      トラッカー・ライブラリ・Web フォントは読み込まない。
-                 最後の注記 … ブラウザ拡張機能はページの外側で動くため、このページからは制御できない（正直に書いておく）。 -->
+                 薄い注記1 … ブラウザ拡張機能はページの外側で動くため、このページからは制御できない。
+                                     またブラウザ自身がクラッシュ復元用に入力の写しを持つことがあり、これもページからは制御できない（正直に書いておく）。
+                 薄い注記2（ソースへのリンク） … ビルドなしで GitHub のファイルがそのまま配信されるので、配信中のファイルと突き合わせられる。
+                                     新しいタブで開くのは、貼り付け中の入力を失わないため（このページを離れると wipe で消える）。
+                                     noreferrer は参照元（このページの URL）を送らないため。
+                                     CSP の connect-src はリンクによるナビゲーションを制限しないので、CSP の変更は不要。 -->
           <section class="help-privacy" aria-labelledby="help-privacy-title">
             <h2 class="help-heading" id="help-privacy-title">Privacy</h2>
             <ul class="help-notes">
               <li>Nothing leaves this page — sending data is blocked by the page itself.</li>
-              <li>Nothing is saved — no cookies or storage. Close the tab and it's gone.</li>
+              <li>Nothing is saved — no cookies or storage. The boxes start empty every time.</li>
               <li>No outside code — no trackers, libraries, or fonts.</li>
             </ul>
-            <p class="help-faint">Browser extensions can still read any page you open.</p>
+            <p class="help-faint">Browser extensions can still read any page you open, and your browser may keep its own copy for crash recovery.</p>
+            <p class="help-faint">No build step — the files on GitHub are exactly what runs here. <a href="https://github.com/lyuin/vs" target="_blank" rel="noopener noreferrer">View source</a></p>
           </section>
           <!-- v1.3.2: ツールバーの Clear と同じ動作（Undo も出る）。押すとヘルプを閉じる -->
           <div class="help-actions">
